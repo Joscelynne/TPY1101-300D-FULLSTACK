@@ -1,34 +1,120 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
-function UserList() {
-  const [usuarios, setUsuarios] = useState([
-    { id: 1, nombre: "Juan Pérez", correo: "juan@gmail.com" },
-    { id: 2, nombre: "María Soto", correo: "maria@gmail.com" },
-    { id: 3, nombre: "Pedro González", correo: "pedro@gmail.com" },
-  ]);
-
+function UserList({ onLogout }) {
+  const [usuarios, setUsuarios] = useState([]);
   const [nombre, setNombre] = useState("");
   const [correo, setCorreo] = useState("");
+  const [editandoUsuario, setEditandoUsuario] = useState(null);
 
-  const agregarUsuario = () => {
+  // 1. CARGAR USUARIOS DESDE EL BACKEND
+  const cargarUsuarios = async () => {
+    try {
+      const response = await fetch("http://localhost:8080/api/usuarios");
+      if (response.ok) {
+        const data = await response.json();
+        setUsuarios(data);
+      } else {
+        console.error("Error al obtener usuarios:", response.statusText);
+      }
+    } catch (error) {
+      console.error("Error de conexión:", error);
+    }
+  };
+
+  useEffect(() => {
+    cargarUsuarios();
+  }, []);
+
+  // 2. AGREGAR O ACTUALIZAR USUARIO
+  const guardarUsuario = async () => {
     if (!nombre || !correo) {
       alert("Completa todos los campos");
       return;
     }
 
-    const nuevoUsuario = {
-      id: usuarios.length + 1,
-      nombre,
-      correo,
+    const payload = {
+      username: nombre,
+      email: correo,
+      password: "clave123", // Contraseña por defecto solicitada
     };
 
-    setUsuarios([...usuarios, nuevoUsuario]);
+    try {
+      if (editandoUsuario) {
+        // Modo Edición (PUT)
+        const response = await fetch(`http://localhost:8080/api/usuarios/${editandoUsuario.id}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+        });
+
+        if (response.ok) {
+          setEditandoUsuario(null);
+          setNombre("");
+          setCorreo("");
+          cargarUsuarios();
+        } else {
+          alert("Error al actualizar el usuario");
+        }
+      } else {
+        // Modo Creación (POST)
+        const response = await fetch("http://localhost:8080/api/usuarios", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+        });
+
+        if (response.ok) {
+          setNombre("");
+          setCorreo("");
+          cargarUsuarios();
+        } else {
+          alert("Error al crear el usuario");
+        }
+      }
+    } catch (error) {
+      console.error("Error al guardar usuario:", error);
+      alert("Error de conexión con el backend");
+    }
+  };
+
+  // 3. INICIAR EDICIÓN
+  const iniciarEdicion = (usuario) => {
+    setEditandoUsuario(usuario);
+    setNombre(usuario.username);
+    setCorreo(usuario.email);
+  };
+
+  // 4. CANCELAR EDICIÓN
+  const cancelarEdicion = () => {
+    setEditandoUsuario(null);
     setNombre("");
     setCorreo("");
   };
 
-  const eliminarUsuario = (id) => {
-    setUsuarios(usuarios.filter((u) => u.id !== id));
+  // 5. ELIMINAR USUARIO
+  const eliminarUsuario = async (id) => {
+    if (!confirm("¿Estás seguro de que deseas eliminar este usuario?")) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`http://localhost:8080/api/usuarios/${id}`, {
+        method: "DELETE",
+      });
+
+      if (response.ok) {
+        cargarUsuarios();
+      } else {
+        alert("Error al eliminar el usuario");
+      }
+    } catch (error) {
+      console.error("Error al eliminar usuario:", error);
+      alert("Error de conexión con el backend");
+    }
   };
 
   return (
@@ -50,6 +136,33 @@ function UserList() {
           boxShadow: "0 10px 30px rgba(199,125,255,0.25)",
         }}
       >
+        {/* Botón de Cerrar Sesión */}
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "10px" }}>
+          <button
+            onClick={onLogout}
+            style={{
+              background: "transparent",
+              color: "#d63384",
+              border: "2px solid #d63384",
+              borderRadius: "12px",
+              padding: "10px 20px",
+              fontWeight: "bold",
+              cursor: "pointer",
+              transition: "all 0.3s ease",
+            }}
+            onMouseOver={(e) => {
+              e.target.style.background = "#d63384";
+              e.target.style.color = "white";
+            }}
+            onMouseOut={(e) => {
+              e.target.style.background = "transparent";
+              e.target.style.color = "#d63384";
+            }}
+          >
+            🚪 Cerrar Sesión
+          </button>
+        </div>
+
         <h1
           style={{
             textAlign: "center",
@@ -70,6 +183,7 @@ function UserList() {
           Administra los usuarios de forma simple y elegante
         </p>
 
+        {/* Formulario de Crear / Editar */}
         <div
           style={{
             background: "#fff",
@@ -85,7 +199,7 @@ function UserList() {
               marginBottom: "20px",
             }}
           >
-            ✨ Crear Usuario
+            {editandoUsuario ? "✨ Editar Usuario" : "✨ Crear Usuario"}
           </h2>
 
           <div
@@ -122,10 +236,9 @@ function UserList() {
             />
 
             <button
-              onClick={agregarUsuario}
+              onClick={guardarUsuario}
               style={{
-                background:
-                  "linear-gradient(135deg, #ff66b3, #c77dff)",
+                background: "linear-gradient(135deg, #ff66b3, #c77dff)",
                 color: "white",
                 border: "none",
                 borderRadius: "12px",
@@ -134,11 +247,29 @@ function UserList() {
                 fontWeight: "bold",
               }}
             >
-              ➕ Agregar
+              {editandoUsuario ? "💾 Guardar" : "➕ Agregar"}
             </button>
+
+            {editandoUsuario && (
+              <button
+                onClick={cancelarEdicion}
+                style={{
+                  background: "#6c757d",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "12px",
+                  padding: "14px 25px",
+                  cursor: "pointer",
+                  fontWeight: "bold",
+                }}
+              >
+                ❌ Cancelar
+              </button>
+            )}
           </div>
         </div>
 
+        {/* Listado de Usuarios */}
         <div
           style={{
             background: "#fff",
@@ -165,8 +296,7 @@ function UserList() {
             <thead>
               <tr
                 style={{
-                  background:
-                    "linear-gradient(135deg, #ff66b3, #c77dff)",
+                  background: "linear-gradient(135deg, #ff66b3, #c77dff)",
                   color: "white",
                 }}
               >
@@ -187,11 +317,12 @@ function UserList() {
                   }}
                 >
                   <td style={{ padding: "15px" }}>{usuario.id}</td>
-                  <td style={{ padding: "15px" }}>{usuario.nombre}</td>
-                  <td style={{ padding: "15px" }}>{usuario.correo}</td>
+                  <td style={{ padding: "15px" }}>{usuario.username}</td>
+                  <td style={{ padding: "15px" }}>{usuario.email}</td>
 
                   <td style={{ padding: "15px" }}>
                     <button
+                      onClick={() => iniciarEdicion(usuario)}
                       style={{
                         background: "#ff85c0",
                         color: "white",
@@ -206,9 +337,7 @@ function UserList() {
                     </button>
 
                     <button
-                      onClick={() =>
-                        eliminarUsuario(usuario.id)
-                      }
+                      onClick={() => eliminarUsuario(usuario.id)}
                       style={{
                         background: "#ff4d6d",
                         color: "white",
@@ -223,6 +352,13 @@ function UserList() {
                   </td>
                 </tr>
               ))}
+              {usuarios.length === 0 && (
+                <tr>
+                  <td colSpan="4" style={{ padding: "20px", color: "#888" }}>
+                    No hay usuarios registrados.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
